@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import es.uji.tfm.Constants.LABELS_PATH
 import es.uji.tfm.Constants.MODEL_PATH
 import es.uji.tfm.databinding.ActivityMainBinding
+import org.opencv.android.OpenCVLoader
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -44,6 +45,13 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         cameraExecutor.execute {
             detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
             detector?.setup()
+        }
+
+        if (!OpenCVLoader.initDebug()) {
+            // Manejo de error si OpenCV no se carga
+            Log.e("OpenCV", "Unable to load OpenCV!");
+        } else {
+            Log.d("OpenCV", "OpenCV loaded successfully!");
         }
 
         if (allPermissionsGranted()) {
@@ -185,13 +193,10 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
-    override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
+    override fun onDetect(bestBox: BoundingBox, inferenceTime: Long, mask: Bitmap) {
         runOnUiThread {
             binding.inferenceTime.text = "${inferenceTime}ms"
-            binding.overlay.apply {
-                setResults(boundingBoxes)
-                invalidate()
-            }
+            binding.overlay.setResults(bestBox, mask) // Pasamos la máscara al OverlayView
         }
     }
 }
