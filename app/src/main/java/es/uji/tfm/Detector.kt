@@ -164,7 +164,6 @@ class Detector(
 
         val coordinates = coordinatesBuffer.floatArray
         val masks = maskProtoBuffer.floatArray
-        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
         val filterOutput0 = mutableListOf<Output0>()
 
         for (c in 0 until numElements) {
@@ -200,9 +199,10 @@ class Detector(
         val best = applyNMS(filterOutput0).sortedByDescending { it.cnf }[0]
 
         val output1 = reshapeOutput1(masks)
-
         val multiply = mutableListOf<Mat>()
         for (index in 0 until 32) {
+            //val weight = sigmoid(best.maskWeight[index].toDouble())  // Aplicar sigmoide a cada peso
+            //multiply.add(output1[index].multiplyDouble(weight))
             multiply.add(output1[index].multiplyDouble(best.maskWeight[index].toDouble()))
         }
 
@@ -212,7 +212,7 @@ class Detector(
         }
 
         val mask = Mat()
-        Core.compare(final, Scalar(0.0), mask, Core.CMP_GT)
+        Core.compare(final, Scalar(0.5), mask, Core.CMP_GT)
         val bestBox = BoundingBox(
             x1 = best.cx - best.w / 2,
             y1 = best.cy - best.h / 2,
@@ -227,7 +227,12 @@ class Detector(
             w = best.w
         )
 
+        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
         detectorListener.onDetect(bestBox, inferenceTime, matToBitmap(mask))
+    }
+
+    fun sigmoid(x: Double): Double {
+        return 1.0 / (1.0 + exp(-x))
     }
 
     fun printMat(mat: Mat) {
@@ -242,12 +247,6 @@ class Detector(
         } else {
             Log.d("MatError", "Incompatible Mat data type: ${mat.type()}")
         }
-    }
-
-    fun applyThreshold(mat: Mat, threshold: Double): Mat {
-        val result = Mat()
-        Imgproc.threshold(mat, result, threshold, 255.0, Imgproc.THRESH_BINARY)
-        return result
     }
 
     private fun matToBitmap(mat: Mat): Bitmap {
@@ -270,7 +269,9 @@ class Detector(
 
             for (i in 0 until size) {
                 for (j in 0 until size) {
-                    buffer[j * size + i] = masks[channelCount * size * j + channelCount * i + maskIndex]
+                    //val index = channelCount * size * j + channelCount * i + maskIndex
+                    //buffer[j * size + i] = sigmoid(masks[index])
+                    buffer[j * size + i] =  masks[channelCount * size * j + channelCount * i + maskIndex]
                 }
             }
 
@@ -315,7 +316,7 @@ class Detector(
 
     private fun Mat.multiplyDouble(double: Double) : Mat {
         val result = Mat()
-        Core.multiply(this, Scalar(double), result)
+        Core.multiply(this, Scalar(sigmoid(double)), result)
         return result
     }
 
