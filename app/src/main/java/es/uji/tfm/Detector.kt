@@ -169,9 +169,10 @@ class Detector(
 
         for (c in 0 until numElements) {
             val classIndex = coordinates[c + numElements * 5]
-            if (classIndex.toInt() == 0) {
+            if (classIndex.toInt() == PERSON_CLASS_INDEX) {
                 val cnf = coordinates[c + numElements * 4]
                 if (cnf > CONFIDENCE_THRESHOLD) {
+                    val cls = coordinates[c + numElements * 5].toInt()
                     val cx = coordinates[c]
                     val cy = coordinates[c + numElements]
                     val w = coordinates[c + numElements * 2]
@@ -190,7 +191,7 @@ class Detector(
                     for (index in 0 until 32) {
                         maskWeight.add(coordinates[c + numElements * (index + 5)])
                     }
-                    filterOutput0.add(Output0(cx = cx, cy = cy, w = w, h = h, cnf = cnf, maskWeight = maskWeight))
+                    filterOutput0.add(Output0(cx = cx, cy = cy, w = w, h = h, cnf = cnf, cls = cls, maskWeight = maskWeight))
                 }
             }
         }
@@ -212,24 +213,6 @@ class Detector(
 
         val mask = Mat()
         Core.compare(final, Scalar(0.0), mask, Core.CMP_GT)
-
-
-
-        /*Log.d("OUTPUT0 SHAPE", output0.shape.contentToString())
-        Log.d("OUTPUT1 SHAPE", output1.shape.contentToString())
-        val bestBoxes = bestBox(output0.floatArray)
-        val segmentationMasks = output1.floatArray
-        val maskBytes = threshold(segmentationMasks)
-        val maskBitmap = createMaskBitmap(maskBytes, 160, 160)
-        // Imprimir los primeros 10 elementos de segmentationMasks
-
-
-        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
-
-        if (bestBoxes == null) {
-            detectorListener.onEmptyDetect()
-            return
-        }*/
         val bestBox = BoundingBox(
             x1 = best.cx - best.w / 2,
             y1 = best.cy - best.h / 2,
@@ -237,19 +220,37 @@ class Detector(
             y2 = best.cy + best.h / 2,
             cx = best.cx,
             cy = best.cy,
-            cls = 0,
+            cls = best.cls,
             clsName = "Person",
             cnf = best.cnf,
             h = best.h,
             w = best.w
-
         )
-
 
         detectorListener.onDetect(bestBox, inferenceTime, matToBitmap(mask))
     }
 
-    fun matToBitmap(mat: Mat): Bitmap {
+    fun printMat(mat: Mat) {
+        if (mat.type() == CvType.CV_32F) {
+            val buffer = FloatArray(mat.rows() * mat.cols())
+            mat.get(0, 0, buffer)
+            for (i in 0 until mat.rows()) {
+                for (j in 0 until mat.cols()) {
+                    Log.d("MatValue", "Value at ($i, $j): ${buffer[i * mat.cols() + j]}")
+                }
+            }
+        } else {
+            Log.d("MatError", "Incompatible Mat data type: ${mat.type()}")
+        }
+    }
+
+    fun applyThreshold(mat: Mat, threshold: Double): Mat {
+        val result = Mat()
+        Imgproc.threshold(mat, result, threshold, 255.0, Imgproc.THRESH_BINARY)
+        return result
+    }
+
+    private fun matToBitmap(mat: Mat): Bitmap {
         val bitmap = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888)
         if (mat.channels() == 1) {  // Grayscale to ARGB
             Imgproc.cvtColor(mat, mat, Imgproc.COLOR_GRAY2RGBA)
@@ -258,105 +259,26 @@ class Detector(
         return bitmap
     }
 
-    private fun printFloatArray(array: FloatArray) {
-        for (i in 0 until (array.size)) {
-            println("Elemento $i: ${array[i]}")
-        }
-    }
-
-    private fun reshapeOutput1(masks: FloatArray) : List<Mat> {
+    private fun reshapeOutput1(masks: FloatArray): List<Mat> {
         val all = mutableListOf<Mat>()
-        for (mask in 0 until 32) {
-            val mat = Mat(160, 160, CvType.CV_32F)
-            for (x in 0 until 160) {
-                for (y in 0 until 160) {
-                    mat.put(y, x, masks[ 32 * 160 *y + 32 *x + mask].toDouble())
+        val size = 160
+        val channelCount = 32
+
+        for (maskIndex in 0 until channelCount) {
+            val mat = Mat(size, size, CvType.CV_32F)
+            val buffer = FloatArray(size * size)
+
+            for (i in 0 until size) {
+                for (j in 0 until size) {
+                    buffer[j * size + i] = masks[channelCount * size * j + channelCount * i + maskIndex]
                 }
             }
+
+            mat.put(0, 0, buffer)
             all.add(mat)
         }
         return all
     }
-    /*private fun bestBox(array: FloatArray) : List<BoundingBox>? {
-
-        val boundingBoxes = mutableListOf<BoundingBox>()
-
-        for (c in 0 until numElements) {
-            var maxConf = CONFIDENCE_THRESHOLD
-            var maxIdx = -1
-            var j = 4
-            var arrayIdx = c + numElements * j
-            while (j < numChannel){
-                if (array[arrayIdx] > maxConf) {
-                    maxConf = array[arrayIdx]
-                    maxIdx = j - 4
-                }
-                j++
-                arrayIdx += numElements
-            }
-
-            if (maxConf > CONFIDENCE_THRESHOLD && maxIdx == PERSON_CLASS_INDEX) {
-                val clsName = labels[maxIdx]
-                val cx = array[c] // 0
-                val cy = array[c + numElements] // 1
-                val w = array[c + numElements * 2]
-                val h = array[c + numElements * 3]
-                val x1 = cx - (w/2F)
-                val y1 = cy - (h/2F)
-                val x2 = cx + (w/2F)
-                val y2 = cy + (h/2F)
-                if (x1 < 0F || x1 > 1F) continue
-                if (y1 < 0F || y1 > 1F) continue
-                if (x2 < 0F || x2 > 1F) continue
-                if (y2 < 0F || y2 > 1F) continue
-
-                boundingBoxes.add(
-                    BoundingBox(
-                        x1 = x1, y1 = y1, x2 = x2, y2 = y2,
-                        cx = cx, cy = cy, w = w, h = h,
-                        cnf = maxConf, cls = maxIdx, clsName = clsName
-                    )
-                )
-            }
-        }
-
-        if (boundingBoxes.isEmpty()) return null
-
-        return applyNMS(boundingBoxes)
-    }
-
-    private fun applyNMS(boxes: List<BoundingBox>) : MutableList<BoundingBox> {
-        val sortedBoxes = boxes.sortedByDescending { it.cnf }.toMutableList()
-        val selectedBoxes = mutableListOf<BoundingBox>()
-
-        while(sortedBoxes.isNotEmpty()) {
-            val first = sortedBoxes.first()
-            selectedBoxes.add(first)
-            sortedBoxes.remove(first)
-
-            val iterator = sortedBoxes.iterator()
-            while (iterator.hasNext()) {
-                val nextBox = iterator.next()
-                val iou = calculateIoU(first, nextBox)
-                if (iou >= IOU_THRESHOLD) {
-                    iterator.remove()
-                }
-            }
-        }
-
-        return selectedBoxes
-    }
-
-    private fun calculateIoU(box1: BoundingBox, box2: BoundingBox): Float {
-        val x1 = maxOf(box1.x1, box2.x1)
-        val y1 = maxOf(box1.y1, box2.y1)
-        val x2 = minOf(box1.x2, box2.x2)
-        val y2 = minOf(box1.y2, box2.y2)
-        val intersectionArea = maxOf(0F, x2 - x1) * maxOf(0F, y2 - y1)
-        val box1Area = box1.w * box1.h
-        val box2Area = box2.w * box2.h
-        return intersectionArea / (box1Area + box2Area - intersectionArea)
-    }*/
 
     private fun applyNMS(bestOutput0: List<Output0>): List<Output0> {
         val sortedBoxes = bestOutput0.sortedByDescending { it.cnf }.toMutableList()
@@ -397,13 +319,6 @@ class Detector(
         return result
     }
 
-    private fun Mat.toBitmap(): Bitmap {
-        val outputBitmap = Bitmap.createBitmap(this.width(), this.height(), Bitmap.Config.ARGB_8888)
-        Utils.matToBitmap(this, outputBitmap)
-        return outputBitmap
-    }
-
-
     interface DetectorListener {
         fun onEmptyDetect()
         fun onDetect(bestBox: BoundingBox, inferenceTime: Long, mask: Bitmap)
@@ -426,5 +341,6 @@ private data class Output0(
     val w: Float,
     val h: Float,
     val cnf: Float,
+    val cls: Int,
     val maskWeight: List<Float>
 )
