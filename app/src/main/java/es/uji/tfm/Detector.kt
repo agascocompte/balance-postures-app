@@ -249,12 +249,31 @@ class Detector(
         }
     }
 
-    private fun matToBitmap(mat: Mat): Bitmap {
+    /*private fun matToBitmap(mat: Mat): Bitmap {
         val bitmap = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888)
         if (mat.channels() == 1) {  // Grayscale to ARGB
             Imgproc.cvtColor(mat, mat, Imgproc.COLOR_GRAY2RGBA)
         }
         Utils.matToBitmap(mat, bitmap)
+        return bitmap
+    }*/
+
+    private fun matToBitmap(mat: Mat): Bitmap {
+        // Asumiendo que mat es en escala de grises y queremos convertir los máximos a transparente y los mínimos a verde
+        val colorMat = Mat(mat.size(), CvType.CV_8UC4) // Usar 4 canales para RGBA
+        for (i in 0 until mat.rows()) {
+            for (j in 0 until mat.cols()) {
+                val value = mat.get(i, j)[0]
+                if (value == 255.0) {  // Máximo en escala de grises
+                    colorMat.put(i, j, 0.0, 0.0, 0.0, 0.0)  // Transparente
+                } else {
+                    colorMat.put(i, j, 0.0, 255.0, 0.0, 255.0)  // Verde y opaco
+                }
+            }
+        }
+        val bitmap = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(colorMat, bitmap)
+        colorMat.release()
         return bitmap
     }
 
