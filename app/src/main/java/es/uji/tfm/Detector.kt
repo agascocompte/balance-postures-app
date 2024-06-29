@@ -199,20 +199,9 @@ class Detector(
         val best = applyNMS(filterOutput0).sortedByDescending { it.cnf }[0]
 
         val output1 = reshapeOutput1(masks)
-        val multiply = mutableListOf<Mat>()
-        for (index in 0 until 32) {
-            //val weight = sigmoid(best.maskWeight[index].toDouble())  // Aplicar sigmoide a cada peso
-            //multiply.add(output1[index].multiplyDouble(weight))
-            multiply.add(output1[index].multiplyDouble(best.maskWeight[index].toDouble()))
-        }
-
-        val final = multiply[0].clone()
-        for (i in 1 until multiply.size) {
-            Core.add(final, multiply[i], final)
-        }
 
         val mask = Mat()
-        Core.compare(final, Scalar(0.5), mask, Core.CMP_GT)
+        Core.compare(output1[0], Scalar(0.5), mask, Core.CMP_GT)
         val bestBox = BoundingBox(
             x1 = best.cx - best.w / 2,
             y1 = best.cy - best.h / 2,
@@ -230,33 +219,6 @@ class Detector(
         inferenceTime = SystemClock.uptimeMillis() - inferenceTime
         detectorListener.onDetect(bestBox, inferenceTime, matToBitmap(mask))
     }
-
-    fun sigmoid(x: Double): Double {
-        return 1.0 / (1.0 + exp(-x))
-    }
-
-    fun printMat(mat: Mat) {
-        if (mat.type() == CvType.CV_32F) {
-            val buffer = FloatArray(mat.rows() * mat.cols())
-            mat.get(0, 0, buffer)
-            for (i in 0 until mat.rows()) {
-                for (j in 0 until mat.cols()) {
-                    Log.d("MatValue", "Value at ($i, $j): ${buffer[i * mat.cols() + j]}")
-                }
-            }
-        } else {
-            Log.d("MatError", "Incompatible Mat data type: ${mat.type()}")
-        }
-    }
-
-    /*private fun matToBitmap(mat: Mat): Bitmap {
-        val bitmap = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888)
-        if (mat.channels() == 1) {  // Grayscale to ARGB
-            Imgproc.cvtColor(mat, mat, Imgproc.COLOR_GRAY2RGBA)
-        }
-        Utils.matToBitmap(mat, bitmap)
-        return bitmap
-    }*/
 
     private fun matToBitmap(mat: Mat): Bitmap {
         // Asumiendo que mat es en escala de grises y queremos convertir los máximos a transparente y los mínimos a verde
@@ -335,7 +297,7 @@ class Detector(
 
     private fun Mat.multiplyDouble(double: Double) : Mat {
         val result = Mat()
-        Core.multiply(this, Scalar(sigmoid(double)), result)
+        Core.multiply(this, Scalar(double), result)
         return result
     }
 
