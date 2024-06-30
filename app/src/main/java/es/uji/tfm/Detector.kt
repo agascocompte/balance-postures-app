@@ -217,25 +217,43 @@ class Detector(
         )
 
         inferenceTime = SystemClock.uptimeMillis() - inferenceTime
-        detectorListener.onDetect(bestBox, inferenceTime, matToBitmap(mask))
+        detectorListener.onDetect(bestBox, inferenceTime, mask.toTransparentGreenBitmap())
     }
 
-    private fun matToBitmap(mat: Mat): Bitmap {
-        // Asumiendo que mat es en escala de grises y queremos convertir los máximos a transparente y los mínimos a verde
-        val colorMat = Mat(mat.size(), CvType.CV_8UC4) // Usar 4 canales para RGBA
-        for (i in 0 until mat.rows()) {
-            for (j in 0 until mat.cols()) {
-                val value = mat.get(i, j)[0]
-                if (value == 255.0) {  // Máximo en escala de grises
-                    colorMat.put(i, j, 0.0, 0.0, 0.0, 0.0)  // Transparente
-                } else {
-                    colorMat.put(i, j, 0.0, 255.0, 0.0, 255.0)  // Verde y opaco
-                }
-            }
-        }
-        val bitmap = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888)
+    fun Mat.toTransparentGreenBitmap(): Bitmap {
+        // Crear una matriz con 4 canales (RGBA) del mismo tamaño que la original
+        val colorMat = Mat(this.size(), CvType.CV_8UC4)
+
+        // Crear matrices para los canales individuales
+        val greenMat = Mat(this.size(), CvType.CV_8UC1, Scalar(0.0))
+        val alphaMat = Mat(this.size(), CvType.CV_8UC1, Scalar(255.0))
+
+        // Establecer el canal verde y el canal alfa
+        Core.compare(this, Scalar(255.0), alphaMat, Core.CMP_EQ)
+        Core.bitwise_not(alphaMat, alphaMat)
+        greenMat.setTo(Scalar(255.0), alphaMat)
+
+        // Crear una lista de canales y fusionarlos
+        val rgbaChannels = mutableListOf<Mat>()
+        rgbaChannels.add(Mat.zeros(this.size(), CvType.CV_8UC1)) // Canal azul (0)
+        rgbaChannels.add(greenMat)                              // Canal verde
+        rgbaChannels.add(Mat.zeros(this.size(), CvType.CV_8UC1)) // Canal rojo (0)
+        rgbaChannels.add(alphaMat)                              // Canal alfa
+
+        Core.merge(rgbaChannels, colorMat)
+
+        // Convertir la matriz resultante en un Bitmap
+        val bitmap = Bitmap.createBitmap(colorMat.cols(), colorMat.rows(), Bitmap.Config.ARGB_8888)
         Utils.matToBitmap(colorMat, bitmap)
+
+        // Liberar las matrices temporales
+        greenMat.release()
+        alphaMat.release()
+        for (channel in rgbaChannels) {
+            channel.release()
+        }
         colorMat.release()
+
         return bitmap
     }
 
