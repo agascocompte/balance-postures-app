@@ -168,7 +168,7 @@ class Detector(
 
         for (c in 0 until numElements) {
             val classIndex = coordinates[c + numElements * 5]
-            if (classIndex.toInt() == PERSON_CLASS_INDEX) {
+            if (classIndex.toInt() == 0) {
                 val cnf = coordinates[c + numElements * 4]
                 if (cnf > CONFIDENCE_THRESHOLD) {
                     val cls = coordinates[c + numElements * 5].toInt()
@@ -210,7 +210,7 @@ class Detector(
             cx = best.cx,
             cy = best.cy,
             cls = best.cls,
-            clsName = "Person",
+            clsName = best.cls.toString(),
             cnf = best.cnf,
             h = best.h,
             w = best.w
@@ -331,7 +331,6 @@ class Detector(
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
         private const val CONFIDENCE_THRESHOLD = 0.3F
         private const val IOU_THRESHOLD = 0.5F
-        private const val PERSON_CLASS_INDEX = 0
     }
 }
 
