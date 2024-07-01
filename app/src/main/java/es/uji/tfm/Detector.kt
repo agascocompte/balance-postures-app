@@ -3,13 +3,11 @@ package es.uji.tfm
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
-import android.util.Log
 import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.Scalar
-import org.opencv.imgproc.Imgproc
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.CompatibilityList
@@ -24,9 +22,7 @@ import java.io.BufferedReader
 import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
-import java.nio.ByteBuffer
-import kotlin.math.exp
-import kotlin.math.min
+
 
 class Detector(
     private val context: Context,
@@ -42,33 +38,14 @@ class Detector(
     private var tensorHeight = 0
     private var numChannel = 0
     private var numElements = 0
+    private var maskWidth = 0
+    private var maskHeight = 0
+    private var maskChannels = 0
 
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
         .add(CastOp(INPUT_IMAGE_TYPE))
         .build()
-
-    fun printInputShapes() {
-        interpreter ?: return
-
-        val numInputs = interpreter!!.inputTensorCount
-        for (i in 0 until numInputs) {
-            val inputShape = interpreter!!.getInputTensor(i).shape()
-            val inputDataType = interpreter!!.getInputTensor(i).dataType()
-            Log.d("AAAAAAAAAAAAAAAAAAAAAAAA", "Input Tensor $i: Shape = ${inputShape.contentToString()}, DataType = $inputDataType")
-        }
-    }
-
-    fun printOutputShapes() {
-        interpreter ?: return
-
-        val numOutputs = interpreter!!.outputTensorCount
-        for (i in 0 until numOutputs) {
-            val outputShape = interpreter!!.getOutputTensor(i).shape()
-            val outputDataType = interpreter!!.getOutputTensor(i).dataType()
-            Log.d("AAAAAAAAAAAAAAAAAAAAAAAA", "Output Tensor $i: Shape = ${outputShape.contentToString()}, DataType = $outputDataType")
-        }
-    }
 
     fun setup(isGpu: Boolean = true) {
 
@@ -104,14 +81,12 @@ class Detector(
         tensorWidth = inputShape[1]
         tensorHeight = inputShape[2]
 
-        // If in case input shape is in format of [1, 3, ..., ...]
-        if (inputShape[1] == 3) {
-            tensorWidth = inputShape[2]
-            tensorHeight = inputShape[3]
-        }
-
         numChannel = outputShape0[1]
         numElements = outputShape0[2]
+
+        maskWidth = outputShape1[1]
+        maskHeight = outputShape1[2]
+        maskChannels = outputShape1[3]
 
         try {
             val inputStream: InputStream = context.assets.open(labelPath)
@@ -128,8 +103,6 @@ class Detector(
         } catch (e: IOException) {
             e.printStackTrace()
         }
-        printInputShapes()
-        printOutputShapes()
     }
 
     fun close() {
@@ -154,7 +127,7 @@ class Detector(
         val imageBuffer = processedImage.buffer
 
         val coordinatesBuffer = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
-        val maskProtoBuffer = TensorBuffer.createFixedSize(intArrayOf(1, 160, 160, 32), OUTPUT_IMAGE_TYPE)
+        val maskProtoBuffer = TensorBuffer.createFixedSize(intArrayOf(1, maskWidth, maskHeight, maskChannels), OUTPUT_IMAGE_TYPE)
 
         val outputs = mapOf<Int, Any>(
             0 to coordinatesBuffer.buffer.rewind(),
@@ -164,89 +137,40 @@ class Detector(
 
         val coordinates = coordinatesBuffer.floatArray
         val masks = maskProtoBuffer.floatArray
-        val filterOutput0 = mutableListOf<Output0>()
 
-        for (c in 0 until numElements) {
-            val classIndex = coordinates[c + numElements * 5]
-            if (classIndex.toInt() == 0) {
-                val cnf = coordinates[c + numElements * 4]
-                if (cnf > CONFIDENCE_THRESHOLD) {
-                    val cls = coordinates[c + numElements * 5].toInt()
-                    val cx = coordinates[c]
-                    val cy = coordinates[c + numElements]
-                    val w = coordinates[c + numElements * 2]
-                    val h = coordinates[c + numElements * 3]
+        val bestBoxes = findBestBoxes(coordinates)
+        if (bestBoxes.isEmpty()) return
+        val bestBox = applyNMS(bestBoxes).sortedByDescending { it.cnf }[0]
 
-                    val x1 = cx - (w/2F)
-                    val y1 = cy - (h/2F)
-                    val x2 = cx + (w/2F)
-                    val y2 = cy + (h/2F)
-                    if (x1 < 0F || x1 > 1F) continue
-                    if (y1 < 0F || y1 > 1F) continue
-                    if (x2 < 0F || x2 > 1F) continue
-                    if (y2 < 0F || y2 > 1F) continue
-
-                    val maskWeight = mutableListOf<Float>()
-                    for (index in 0 until 32) {
-                        maskWeight.add(coordinates[c + numElements * (index + 5)])
-                    }
-                    filterOutput0.add(Output0(cx = cx, cy = cy, w = w, h = h, cnf = cnf, cls = cls, maskWeight = maskWeight))
-                }
-            }
-        }
-
-        if (filterOutput0.isEmpty()) return
-        val best = applyNMS(filterOutput0).sortedByDescending { it.cnf }[0]
-
-        val output1 = reshapeOutput1(masks)
-
+        val reshapedMaskOutput = reshapeOutput1(masks)
         val mask = Mat()
-        Core.compare(output1[0], Scalar(0.5), mask, Core.CMP_GT)
-        val bestBox = BoundingBox(
-            x1 = best.cx - best.w / 2,
-            y1 = best.cy - best.h / 2,
-            x2 = best.cx + best.w / 2,
-            y2 = best.cy + best.h / 2,
-            cx = best.cx,
-            cy = best.cy,
-            cls = best.cls,
-            clsName = best.cls.toString(),
-            cnf = best.cnf,
-            h = best.h,
-            w = best.w
-        )
+        Core.compare(reshapedMaskOutput[0], Scalar(0.5), mask, Core.CMP_GT)
 
         inferenceTime = SystemClock.uptimeMillis() - inferenceTime
         detectorListener.onDetect(bestBox, inferenceTime, mask.toTransparentGreenBitmap())
     }
 
-    fun Mat.toTransparentGreenBitmap(): Bitmap {
-        // Crear una matriz con 4 canales (RGBA) del mismo tamaño que la original
+    private fun Mat.toTransparentGreenBitmap(): Bitmap {
         val colorMat = Mat(this.size(), CvType.CV_8UC4)
 
-        // Crear matrices para los canales individuales
         val greenMat = Mat(this.size(), CvType.CV_8UC1, Scalar(0.0))
         val alphaMat = Mat(this.size(), CvType.CV_8UC1, Scalar(255.0))
 
-        // Establecer el canal verde y el canal alfa
         Core.compare(this, Scalar(255.0), alphaMat, Core.CMP_EQ)
         Core.bitwise_not(alphaMat, alphaMat)
         greenMat.setTo(Scalar(255.0), alphaMat)
 
-        // Crear una lista de canales y fusionarlos
         val rgbaChannels = mutableListOf<Mat>()
-        rgbaChannels.add(Mat.zeros(this.size(), CvType.CV_8UC1)) // Canal azul (0)
-        rgbaChannels.add(greenMat)                              // Canal verde
-        rgbaChannels.add(Mat.zeros(this.size(), CvType.CV_8UC1)) // Canal rojo (0)
-        rgbaChannels.add(alphaMat)                              // Canal alfa
+        rgbaChannels.add(Mat.zeros(this.size(), CvType.CV_8UC1))
+        rgbaChannels.add(greenMat)
+        rgbaChannels.add(Mat.zeros(this.size(), CvType.CV_8UC1))
+        rgbaChannels.add(alphaMat)
 
         Core.merge(rgbaChannels, colorMat)
 
-        // Convertir la matriz resultante en un Bitmap
         val bitmap = Bitmap.createBitmap(colorMat.cols(), colorMat.rows(), Bitmap.Config.ARGB_8888)
         Utils.matToBitmap(colorMat, bitmap)
 
-        // Liberar las matrices temporales
         greenMat.release()
         alphaMat.release()
         for (channel in rgbaChannels) {
@@ -259,18 +183,14 @@ class Detector(
 
     private fun reshapeOutput1(masks: FloatArray): List<Mat> {
         val all = mutableListOf<Mat>()
-        val size = 160
-        val channelCount = 32
 
-        for (maskIndex in 0 until channelCount) {
-            val mat = Mat(size, size, CvType.CV_32F)
-            val buffer = FloatArray(size * size)
+        for (maskIndex in 0 until maskChannels) {
+            val mat = Mat(maskWidth, maskHeight, CvType.CV_32F)
+            val buffer = FloatArray(maskWidth * maskHeight)
 
-            for (i in 0 until size) {
-                for (j in 0 until size) {
-                    //val index = channelCount * size * j + channelCount * i + maskIndex
-                    //buffer[j * size + i] = sigmoid(masks[index])
-                    buffer[j * size + i] =  masks[channelCount * size * j + channelCount * i + maskIndex]
+            for (i in 0 until maskWidth) {
+                for (j in 0 until maskHeight) {
+                    buffer[j * maskWidth + i] =  masks[maskChannels * maskHeight * j + maskChannels * i + maskIndex]
                 }
             }
 
@@ -280,9 +200,54 @@ class Detector(
         return all
     }
 
-    private fun applyNMS(bestOutput0: List<Output0>): List<Output0> {
+    private fun findBestBoxes(coordinates: FloatArray) : List<BoundingBox> {
+        val bestBoxes = mutableListOf<BoundingBox>()
+
+        for (c in 0 until numElements) {
+            val cnf = coordinates[c + numElements * 4]
+
+            val confidences: MutableList<Float> = ArrayList()
+            val start: Int = 4 + labels.size
+            for (i in 4 until start) {
+                confidences.add(coordinates[c + numElements * i])
+            }
+            var maxConfidence = -Float.MAX_VALUE
+            var classId = -1
+            for (i in confidences.indices) {
+                if (confidences[i] > maxConfidence) {
+                    maxConfidence = confidences[i]
+                    classId = i
+                }
+            }
+
+            if (maxConfidence > CONFIDENCE_THRESHOLD) {
+                val cx = coordinates[c]
+                val cy = coordinates[c + numElements]
+                val w = coordinates[c + numElements * 2]
+                val h = coordinates[c + numElements * 3]
+
+                val x1 = cx - (w / 2F)
+                val y1 = cy - (h / 2F)
+                val x2 = cx + (w / 2F)
+                val y2 = cy + (h / 2F)
+                if (x1 < 0F || x1 > tensorWidth) continue
+                if (y1 < 0F || y1 > tensorHeight) continue
+                if (x2 < 0F || x2 > tensorWidth) continue
+                if (y2 < 0F || y2 > tensorHeight) continue
+
+                val maskWeight = mutableListOf<Float>()
+                for (index in 0 until 32) {
+                    maskWeight.add(coordinates[c + numElements * (index + 5)])
+                }
+                bestBoxes.add(BoundingBox(x1 = cx - w / 2, y1 = cy - h / 2, x2 = cx + w / 2, y2 = cy + h / 2, cx = cx, cy = cy, w = w, h = h, cnf = cnf, cls = classId, clsName = labels[classId], maskWeight = maskWeight))
+            }
+        }
+        return bestBoxes
+    }
+
+    private fun applyNMS(bestOutput0: List<BoundingBox>): List<BoundingBox> {
         val sortedBoxes = bestOutput0.sortedByDescending { it.cnf }.toMutableList()
-        val selectedBoxes = mutableListOf<Output0>()
+        val selectedBoxes = mutableListOf<BoundingBox>()
 
         while(sortedBoxes.isNotEmpty()) {
             val first = sortedBoxes.first()
@@ -301,7 +266,7 @@ class Detector(
 
         return selectedBoxes
     }
-    private fun calculateIoU(b1: Output0, b2: Output0): Float {
+    private fun calculateIoU(b1: BoundingBox, b2: BoundingBox): Float {
         val x1 = maxOf(b1.cx - (b1.w/2F), b2.cx - (b2.w/2F))
         val y1 = maxOf(b1.cy - (b1.h/2F), b2.cy - (b2.h/2F))
         val x2 = minOf(b1.cx + (b1.w/2F), b2.cx + (b2.w/2F))
@@ -311,12 +276,6 @@ class Detector(
         val box1Area = b1.w * b1.h
         val box2Area = b2.w * b2.h
         return intersectionArea / (box1Area + box2Area - intersectionArea)
-    }
-
-    private fun Mat.multiplyDouble(double: Double) : Mat {
-        val result = Mat()
-        Core.multiply(this, Scalar(double), result)
-        return result
     }
 
     interface DetectorListener {
@@ -333,13 +292,3 @@ class Detector(
         private const val IOU_THRESHOLD = 0.5F
     }
 }
-
-private data class Output0(
-    val cx: Float,
-    val cy: Float,
-    val w: Float,
-    val h: Float,
-    val cnf: Float,
-    val cls: Int,
-    val maskWeight: List<Float>
-)
