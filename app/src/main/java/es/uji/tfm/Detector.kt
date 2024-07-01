@@ -135,19 +135,21 @@ class Detector(
         )
         interpreter?.runForMultipleInputsOutputs(arrayOf(imageBuffer), outputs)
 
-        val coordinates = coordinatesBuffer.floatArray
-        val masks = maskProtoBuffer.floatArray
+        val coordinates : FloatArray = coordinatesBuffer.floatArray
+        val masks : FloatArray = maskProtoBuffer.floatArray
 
-        val bestBoxes = findBestBoxes(coordinates)
+        val bestBoxes : List<BoundingBox> = findBestBoxes(coordinates)
         if (bestBoxes.isEmpty()) return
-        val bestBox = applyNMS(bestBoxes).sortedByDescending { it.cnf }[0]
+        val bestBox : BoundingBox = applyNMS(bestBoxes).sortedByDescending { it.cnf }[0]
+        if (bestBox.cls >= 4) return // Remove background
 
-        val reshapedMaskOutput = reshapeOutput1(masks)
+        val reshapedMaskOutput : List<Mat> = reshapeOutput1(masks)
         val mask = Mat()
         Core.compare(reshapedMaskOutput[0], Scalar(0.5), mask, Core.CMP_GT)
+        val maskBitmap : Bitmap = mask.toTransparentGreenBitmap()
 
         inferenceTime = SystemClock.uptimeMillis() - inferenceTime
-        detectorListener.onDetect(bestBox, inferenceTime, mask.toTransparentGreenBitmap())
+        detectorListener.onDetect(bestBox, inferenceTime, maskBitmap)
     }
 
     private fun Mat.toTransparentGreenBitmap(): Bitmap {

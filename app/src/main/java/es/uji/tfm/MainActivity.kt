@@ -48,7 +48,6 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
 
         if (!OpenCVLoader.initDebug()) {
-            // Manejo de error si OpenCV no se carga
             Log.e("OpenCV", "Unable to load OpenCV!");
         } else {
             Log.d("OpenCV", "OpenCV loaded successfully!");
