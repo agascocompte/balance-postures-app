@@ -67,7 +67,7 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
 
             boxPaint.style = Paint.Style.STROKE
             canvas.drawRect(boundingRect, boxPaint)
-            val drawableText = boundingBox.clsName ?: "Detected"
+            val drawableText = boundingBox.clsName
 
             textBackgroundPaint.getTextBounds(drawableText, 0, drawableText.length, bounds)
             val textWidth = bounds.width()
