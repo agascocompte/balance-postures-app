@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Bundle
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -25,7 +27,7 @@ import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private lateinit var binding: ActivityMainBinding
-    private val isFrontCamera = false
+    private var isFrontCamera = false
 
     private var preview: Preview? = null
     private var imageAnalyzer: ImageAnalysis? = null
@@ -39,6 +41,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        setSupportActionBar(binding.toolbar)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
@@ -92,7 +95,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
         val cameraSelector = CameraSelector
             .Builder()
-            .requireLensFacing(CameraSelector.LENS_FACING_BACK)
+            .requireLensFacing(
+                if (isFrontCamera) CameraSelector.LENS_FACING_FRONT
+                else CameraSelector.LENS_FACING_BACK)
             .build()
 
         preview =  Preview.Builder()
@@ -175,6 +180,22 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
             startCamera()
         } else {
             requestPermissionLauncher.launch(REQUIRED_PERMISSIONS)
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_switch_camera -> {
+                isFrontCamera = !isFrontCamera
+                startCamera()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
     }
 
