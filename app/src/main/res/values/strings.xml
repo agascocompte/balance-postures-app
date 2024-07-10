@@ -2,4 +2,6 @@
     <string name="app_name">TFM</string>
     <string name="gpu">GPU</string>
     <string name="switch_camera">Switch Camera</string>
+    <string name="show_mask">Show mask</string>
+    <string name="hide_mask">Hide mask</string>
 </resources>

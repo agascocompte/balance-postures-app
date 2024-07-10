@@ -60,6 +60,7 @@
         tools:ignore="NotSibling" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/show_mask_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/white"
@@ -67,24 +68,36 @@
         app:layout_constraintBottom_toBottomOf="parent">
 
         <ToggleButton
-            android:id="@+id/isGpu"
+            android:id="@+id/show_mask"
             android:background="@color/orange"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="@color/white"
-            android:textOff="@string/gpu"
-            android:textOn="@string/gpu"
+            android:textOff="@string/show_mask"
+            android:textOn="@string/hide_mask"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.5" />
+            app:layout_constraintVertical_bias="0.5"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+        />
 
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!--    <ImageView-->
-    <!--        android:id="@+id/ivTop"-->
-    <!--        android:layout_width="match_parent"-->
-    <!--        android:layout_height="match_parent"/>-->
+    <TextView
+        android:id="@+id/label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:textColor="@color/white"
+        android:textSize="24sp"
+        android:gravity="center"
+        android:background="@color/black"
+        app:layout_constraintBottom_toTopOf="@id/show_mask_layout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:ignore="NotSibling" />
 </androidx.constraintlayout.widget.ConstraintLayout>

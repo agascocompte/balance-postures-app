@@ -28,6 +28,7 @@ import java.util.concurrent.Executors
 class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private lateinit var binding: ActivityMainBinding
     private var isFrontCamera = false
+    private var showBBoxMask = false
 
     private var preview: Preview? = null
     private var imageAnalyzer: ImageAnalysis? = null
@@ -67,15 +68,8 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     private fun bindListeners() {
         binding.apply {
-            isGpu.setOnCheckedChangeListener { buttonView, isChecked ->
-                cameraExecutor.submit {
-                    detector?.setup(isGpu = isChecked)
-                }
-                if (isChecked) {
-                    buttonView.setBackgroundColor(ContextCompat.getColor(baseContext, R.color.orange))
-                } else {
-                    buttonView.setBackgroundColor(ContextCompat.getColor(baseContext, R.color.gray))
-                }
+            showMask.setOnCheckedChangeListener { buttonView, isChecked ->
+                showBBoxMask = isChecked
             }
         }
     }
@@ -210,13 +204,19 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     override fun onEmptyDetect() {
         runOnUiThread {
             binding.overlay.clear()
+            binding.label.text = ""
         }
     }
 
     override fun onDetect(bestBox: BoundingBox, inferenceTime: Long, mask: Bitmap) {
         runOnUiThread {
             binding.inferenceTime.text = "${inferenceTime}ms"
-            binding.overlay.setResults(bestBox, mask) // Pasamos la máscara al OverlayView
+            if (showBBoxMask) {
+                binding.overlay.setResults(bestBox, mask)
+            } else {
+                binding.overlay.clear()
+            }
+            binding.label.text = bestBox.clsName
         }
     }
 }
