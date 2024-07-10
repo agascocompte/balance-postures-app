@@ -5,6 +5,6 @@
     <item
         android:id="@+id/action_switch_camera"
         android:icon="@drawable/ic_switch_camera"
-        android:title="Switch Camera"
+        android:title="@string/switch_camera"
         app:showAsAction="always" />
 </menu>
