@@ -4,4 +4,5 @@
     <string name="switch_camera">Switch Camera</string>
     <string name="show_mask">Show mask</string>
     <string name="hide_mask">Hide mask</string>
+    <string name="no_detection">No detection</string>
 </resources>

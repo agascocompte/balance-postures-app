@@ -204,7 +204,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     override fun onEmptyDetect() {
         runOnUiThread {
             binding.overlay.clear()
-            binding.label.text = ""
+            binding.label.text = getString(R.string.no_detection)
         }
     }
 

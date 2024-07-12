@@ -42,6 +42,8 @@ class Detector(
     private var maskHeight = 0
     private var maskChannels = 0
 
+    private var noDetectionCounter = 0;
+
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
         .add(CastOp(INPUT_IMAGE_TYPE))
@@ -139,9 +141,16 @@ class Detector(
         val masks : FloatArray = maskProtoBuffer.floatArray
 
         val bestBoxes : List<BoundingBox> = findBestBoxes(coordinates)
-        if (bestBoxes.isEmpty()) return
+        if (bestBoxes.isEmpty()) {
+            detectorListener.onEmptyDetect()
+            return
+        }
         val bestBox : BoundingBox = applyNMS(bestBoxes).sortedByDescending { it.cnf }[0]
-        if (bestBox.cls >= 4) return // Remove background
+        if (bestBox.cls >= 4) {
+            noDetectionCounter++
+            if (noDetectionCounter > 15) detectorListener.onEmptyDetect()
+            return
+        } // Remove background
 
         val reshapedMaskOutput : List<Mat> = reshapeOutput1(masks)
         val mask = Mat()
@@ -149,6 +158,7 @@ class Detector(
         val maskBitmap : Bitmap = mask.toTransparentGreenBitmap()
 
         inferenceTime = SystemClock.uptimeMillis() - inferenceTime
+        noDetectionCounter = 0
         detectorListener.onDetect(bestBox, inferenceTime, maskBitmap)
     }
 
