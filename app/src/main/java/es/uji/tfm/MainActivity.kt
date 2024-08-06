@@ -19,7 +19,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import es.uji.tfm.Constants.LABELS_PATH
-import es.uji.tfm.Constants.MODEL_PATH
+import es.uji.tfm.Constants.MODEL_8N_PATH
 import es.uji.tfm.databinding.ActivityMainBinding
 import org.opencv.android.OpenCVLoader
 import java.util.concurrent.ExecutorService
@@ -47,7 +47,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         cameraExecutor.execute {
-            detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
+            detector = Detector(baseContext, MODEL_8N_PATH, LABELS_PATH, this)
             detector?.setup()
         }
 
