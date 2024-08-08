@@ -1,6 +1,7 @@
 package es.uji.tfm
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
@@ -14,7 +15,6 @@ import android.widget.ArrayAdapter
 import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -63,9 +63,9 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
 
         if (!OpenCVLoader.initDebug()) {
-            Log.e("OpenCV", "Unable to load OpenCV!");
+            Log.e("OpenCV", "Unable to load OpenCV!")
         } else {
-            Log.d("OpenCV", "OpenCV loaded successfully!");
+            Log.d("OpenCV", "OpenCV loaded successfully!")
         }
 
         if (allPermissionsGranted()) {
@@ -267,6 +267,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
+    @SuppressLint("SetTextI18n")
     override fun onDetect(bestBox: BoundingBox, inferenceTime: Long, mask: Bitmap) {
         runOnUiThread {
             binding.inferenceTime.text = "${inferenceTime}ms"

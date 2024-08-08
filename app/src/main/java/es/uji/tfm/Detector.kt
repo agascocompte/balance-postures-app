@@ -42,7 +42,7 @@ class Detector(
     private var maskHeight = 0
     private var maskChannels = 0
 
-    private var noDetectionCounter = 0;
+    private var noDetectionCounter = 0
 
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
