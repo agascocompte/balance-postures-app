@@ -8,6 +8,10 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.Spinner
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -19,7 +23,11 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import es.uji.tfm.Constants.LABELS_PATH
+import es.uji.tfm.Constants.MODEL_8L_PATH
+import es.uji.tfm.Constants.MODEL_8M_PATH
 import es.uji.tfm.Constants.MODEL_8N_PATH
+import es.uji.tfm.Constants.MODEL_8S_PATH
+import es.uji.tfm.Constants.MODEL_8X_PATH
 import es.uji.tfm.databinding.ActivityMainBinding
 import org.opencv.android.OpenCVLoader
 import java.util.concurrent.ExecutorService
@@ -47,7 +55,7 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         cameraExecutor.execute {
-            detector = Detector(baseContext, MODEL_8N_PATH, LABELS_PATH, this)
+            detector = Detector(baseContext, MODEL_8X_PATH, LABELS_PATH, this)
             detector?.setup()
         }
 
@@ -179,6 +187,26 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
+        val menuItem = menu.findItem(R.id.action_model_selector)
+        val spinner = menuItem.actionView as Spinner
+
+        ArrayAdapter.createFromResource(
+            this,
+            R.array.model_options,
+            R.layout.spinner_item
+        ).also { adapter ->
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            spinner.adapter = adapter
+        }
+
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>, view: View, position: Int, id: Long) {
+                val modelName = parent.getItemAtPosition(position).toString()
+                updateModel(modelName)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>) {}
+        }
         return true
     }
 
@@ -190,6 +218,26 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
                 true
             }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    fun updateModel(modelName: String) {
+        cameraExecutor.execute {
+            detector?.close()
+            detector = null
+            detector = Detector(baseContext, getModelPath(modelName), LABELS_PATH, this)
+            detector?.setup()
+        }
+    }
+
+    private fun getModelPath(modelName: String): String {
+        return when (modelName) {
+                "YOLOv8n-seg" -> MODEL_8N_PATH
+                "YOLOv8s-seg" -> MODEL_8S_PATH
+                "YOLOv8m-seg" -> MODEL_8M_PATH
+                "YOLOv8l-seg" -> MODEL_8L_PATH
+                "YOLOv8x-seg" -> MODEL_8X_PATH
+            else -> MODEL_8N_PATH
         }
     }
 

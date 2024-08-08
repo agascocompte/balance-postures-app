@@ -26,7 +26,7 @@ import java.io.InputStreamReader
 
 class Detector(
     private val context: Context,
-    private val modelPath: String,
+    private var modelPath: String,
     private val labelPath: String,
     private val detectorListener: DetectorListener,
 ) {
@@ -110,6 +110,11 @@ class Detector(
     fun close() {
         interpreter?.close()
         interpreter = null
+    }
+
+    fun updateModel(modelFileName: String) {
+        modelPath = modelFileName
+        setup()
     }
 
     fun detect(frame: Bitmap) {
