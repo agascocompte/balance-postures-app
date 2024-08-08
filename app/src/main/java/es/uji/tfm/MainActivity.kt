@@ -11,7 +11,10 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.ProgressBar
 import android.widget.Spinner
+import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
@@ -222,11 +225,19 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     }
 
     fun updateModel(modelName: String) {
+        runOnUiThread {
+            findViewById<ProgressBar>(R.id.progressBar).visibility = View.VISIBLE
+            findViewById<TextView>(R.id.loadingText).visibility = View.VISIBLE
+        }
         cameraExecutor.execute {
             detector?.close()
             detector = null
             detector = Detector(baseContext, getModelPath(modelName), LABELS_PATH, this)
             detector?.setup()
+            runOnUiThread {
+                findViewById<ProgressBar>(R.id.progressBar).visibility = View.GONE
+                findViewById<TextView>(R.id.loadingText).visibility = View.GONE
+            }
         }
     }
 
