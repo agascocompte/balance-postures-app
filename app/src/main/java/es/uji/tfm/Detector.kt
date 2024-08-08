@@ -112,11 +112,6 @@ class Detector(
         interpreter = null
     }
 
-    fun updateModel(modelFileName: String) {
-        modelPath = modelFileName
-        setup()
-    }
-
     fun detect(frame: Bitmap) {
         interpreter ?: return
         if (tensorWidth == 0) return
