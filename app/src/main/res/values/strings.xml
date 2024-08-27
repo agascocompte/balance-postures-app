@@ -1,18 +1,17 @@
 <resources>
     <string name="app_name">TFM</string>
     <string name="gpu">GPU</string>
-    <string name="switch_camera">Switch Camera</string>
-    <string name="show_mask">Show mask</string>
-    <string name="hide_mask">Hide mask</string>
-    <string name="no_detection">No detection</string>
-    <string name="model_selector">Model</string>
+    <string name="hide_mask">HIDE MASK</string>
+    <string name="show_mask">SHOW MASK</string>
     <string name="loading_model">Loading model…</string>
-
+    <string name="model_selector">YOLOv8n-seg</string>
+    <string name="switch_camera">SWITCH CAMERA</string>
+    <string name="no_detection">No detection</string>
     <string-array name="model_options">
-        <item>YOLOv8n-seg</item>
-        <item>YOLOv8s-seg</item>
-        <item>YOLOv8m-seg</item>
-        <item>YOLOv8l-seg</item>
-        <item>YOLOv8x-seg</item>
+        <item>YOLOv8n-seg</item>25
+        <item>YOLOv8s-seg</item>35
+        <item>YOLOv8m-seg</item>80
+        <item>YOLOv8l-seg</item>100
+        <item>YOLOv8x-seg</item>130
     </string-array>
 </resources>
