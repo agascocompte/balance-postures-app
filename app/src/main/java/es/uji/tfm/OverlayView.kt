@@ -1,17 +1,15 @@
 package es.uji.tfm
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Rect
+import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
 
 class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs) {
 
-    private var results = listOf<BoundingBox>()
+    private var results : BoundingBox? = null
+    private var maskBitmap: Bitmap? = null
     private var boxPaint = Paint()
     private var textBackgroundPaint = Paint()
     private var textPaint = Paint()
@@ -23,7 +21,8 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     }
 
     fun clear() {
-        results = listOf()
+        results = null
+        maskBitmap = null
         textPaint.reset()
         textBackgroundPaint.reset()
         boxPaint.reset()
@@ -48,32 +47,45 @@ class OverlayView(context: Context?, attrs: AttributeSet?) : View(context, attrs
     override fun draw(canvas: Canvas) {
         super.draw(canvas)
 
-        results.forEach {
-            val left = it.x1 * width
-            val top = it.y1 * height
-            val right = it.x2 * width
-            val bottom = it.y2 * height
+        results?.let { boundingBox ->
+            val left = (boundingBox.x1 * width)
+            val top = (boundingBox.y1 * height)
+            val right = (boundingBox.x2 * width)
+            val bottom = (boundingBox.y2 * height)
+            val boundingRect = RectF(left, top, right, bottom)
 
-            canvas.drawRect(left, top, right, bottom, boxPaint)
-            val drawableText = it.clsName
+            if (maskBitmap != null) {
+                val maskRect = Rect(
+                    (left / width * maskBitmap!!.width).toInt(),
+                    (top / height * maskBitmap!!.height).toInt(),
+                    (right / width * maskBitmap!!.width).toInt(),
+                    (bottom / height * maskBitmap!!.height).toInt()
+                )
+                val croppedMask = Bitmap.createBitmap(maskBitmap!!, maskRect.left, maskRect.top, maskRect.width(), maskRect.height())
+                canvas.drawBitmap(croppedMask, null, boundingRect, null)
+            }
+
+            boxPaint.style = Paint.Style.STROKE
+            canvas.drawRect(boundingRect, boxPaint)
+            val drawableText = boundingBox.clsName
 
             textBackgroundPaint.getTextBounds(drawableText, 0, drawableText.length, bounds)
             val textWidth = bounds.width()
             val textHeight = bounds.height()
             canvas.drawRect(
                 left,
+                top - textHeight - BOUNDING_RECT_TEXT_PADDING,
+                left + textWidth + BOUNDING_RECT_TEXT_PADDING * 2,
                 top,
-                left + textWidth + BOUNDING_RECT_TEXT_PADDING,
-                top + textHeight + BOUNDING_RECT_TEXT_PADDING,
                 textBackgroundPaint
             )
-            canvas.drawText(drawableText, left, top + bounds.height(), textPaint)
-
+            canvas.drawText(drawableText, left + BOUNDING_RECT_TEXT_PADDING, top - BOUNDING_RECT_TEXT_PADDING, textPaint)
         }
     }
 
-    fun setResults(boundingBoxes: List<BoundingBox>) {
-        results = boundingBoxes
+    fun setResults(bestBox: BoundingBox, mask: Bitmap?) {
+        results = bestBox
+        maskBitmap = mask
         invalidate()
     }
 

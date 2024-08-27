@@ -1,30 +1,46 @@
 package es.uji.tfm
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Bundle
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.ProgressBar
+import android.widget.Spinner
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import es.uji.tfm.Constants.LABELS_PATH
-import es.uji.tfm.Constants.MODEL_PATH
+import es.uji.tfm.Constants.MODEL_8L_PATH
+import es.uji.tfm.Constants.MODEL_8M_PATH
+import es.uji.tfm.Constants.MODEL_8N_PATH
+import es.uji.tfm.Constants.MODEL_8S_PATH
+import es.uji.tfm.Constants.MODEL_8X_PATH
 import es.uji.tfm.databinding.ActivityMainBinding
+import org.opencv.android.OpenCVLoader
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private lateinit var binding: ActivityMainBinding
-    private val isFrontCamera = false
+    private var isFrontCamera = false
+    private var showBBoxMask = false
 
     private var preview: Preview? = null
     private var imageAnalyzer: ImageAnalysis? = null
@@ -38,12 +54,19 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        setSupportActionBar(binding.toolbar)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         cameraExecutor.execute {
-            detector = Detector(baseContext, MODEL_PATH, LABELS_PATH, this)
+            detector = Detector(baseContext, MODEL_8X_PATH, LABELS_PATH, this)
             detector?.setup()
+        }
+
+        if (!OpenCVLoader.initLocal()) {
+            Log.e("OpenCV", "Unable to load OpenCV!")
+        } else {
+            Log.d("OpenCV", "OpenCV loaded successfully!")
         }
 
         if (allPermissionsGranted()) {
@@ -57,15 +80,8 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
     private fun bindListeners() {
         binding.apply {
-            isGpu.setOnCheckedChangeListener { buttonView, isChecked ->
-                cameraExecutor.submit {
-                    detector?.setup(isGpu = isChecked)
-                }
-                if (isChecked) {
-                    buttonView.setBackgroundColor(ContextCompat.getColor(baseContext, R.color.orange))
-                } else {
-                    buttonView.setBackgroundColor(ContextCompat.getColor(baseContext, R.color.gray))
-                }
+            showMask.setOnCheckedChangeListener { buttonView, isChecked ->
+                showBBoxMask = isChecked
             }
         }
     }
@@ -85,16 +101,24 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
 
         val cameraSelector = CameraSelector
             .Builder()
-            .requireLensFacing(CameraSelector.LENS_FACING_BACK)
+            .requireLensFacing(
+                if (isFrontCamera) CameraSelector.LENS_FACING_FRONT
+                else CameraSelector.LENS_FACING_BACK)
             .build()
 
         preview =  Preview.Builder()
-            .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                //.setTargetAspectRatio(AspectRatio.RATIO_4_3)
+            .setResolutionSelector(ResolutionSelector.Builder().apply {
+                setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY) }
+                .build())
             .setTargetRotation(rotation)
             .build()
 
         imageAnalyzer = ImageAnalysis.Builder()
-            .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+            .setResolutionSelector(ResolutionSelector.Builder().apply {
+                    setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY) }
+                .build())
+            //.setTargetAspectRatio(AspectRatio.RATIO_4_3)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setTargetRotation(binding.viewFinder.display.rotation)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
@@ -171,6 +195,70 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
         }
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        val menuItem = menu.findItem(R.id.action_model_selector)
+        val spinner = menuItem.actionView as Spinner
+
+        ArrayAdapter.createFromResource(
+            this,
+            R.array.model_options,
+            R.layout.spinner_item
+        ).also { adapter ->
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            spinner.adapter = adapter
+        }
+
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>, view: View, position: Int, id: Long) {
+                val modelName = parent.getItemAtPosition(position).toString()
+                updateModel(modelName)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>) {}
+        }
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_switch_camera -> {
+                isFrontCamera = !isFrontCamera
+                startCamera()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    fun updateModel(modelName: String) {
+        runOnUiThread {
+            findViewById<ProgressBar>(R.id.progressBar).visibility = View.VISIBLE
+            findViewById<TextView>(R.id.loadingText).visibility = View.VISIBLE
+        }
+        cameraExecutor.execute {
+            detector?.close()
+            detector = null
+            detector = Detector(baseContext, getModelPath(modelName), LABELS_PATH, this)
+            detector?.setup()
+            runOnUiThread {
+                findViewById<ProgressBar>(R.id.progressBar).visibility = View.GONE
+                findViewById<TextView>(R.id.loadingText).visibility = View.GONE
+            }
+        }
+    }
+
+    private fun getModelPath(modelName: String): String {
+        return when (modelName) {
+                "YOLOv8n-seg" -> MODEL_8N_PATH
+                "YOLOv8s-seg" -> MODEL_8S_PATH
+                "YOLOv8m-seg" -> MODEL_8M_PATH
+                "YOLOv8l-seg" -> MODEL_8L_PATH
+                "YOLOv8x-seg" -> MODEL_8X_PATH
+            else -> MODEL_8N_PATH
+        }
+    }
+
     companion object {
         private const val TAG = "Camera"
         private const val REQUEST_CODE_PERMISSIONS = 10
@@ -182,16 +270,20 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     override fun onEmptyDetect() {
         runOnUiThread {
             binding.overlay.clear()
+            binding.label.text = getString(R.string.no_detection)
         }
     }
 
-    override fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long) {
+    @SuppressLint("SetTextI18n")
+    override fun onDetect(bestBox: BoundingBox, inferenceTime: Long, mask: Bitmap) {
         runOnUiThread {
             binding.inferenceTime.text = "${inferenceTime}ms"
-            binding.overlay.apply {
-                setResults(boundingBoxes)
-                invalidate()
+            if (showBBoxMask) {
+                binding.overlay.setResults(bestBox, mask)
+            } else {
+                binding.overlay.clear()
             }
+            binding.label.text = bestBox.clsName
         }
     }
 }

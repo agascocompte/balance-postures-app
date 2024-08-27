@@ -7,6 +7,20 @@
     android:layout_height="match_parent"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:popupTheme="@style/ThemeOverlay.AppCompat.Light"/>
+    </com.google.android.material.appbar.AppBarLayout>
+
     <androidx.camera.view.PreviewView
         android:id="@+id/view_finder"
         android:layout_width="0dp"
@@ -37,13 +51,16 @@
         tools:text="100ms"
         android:textColor="@color/white"
         android:id="@+id/inferenceTime"
-        android:layout_margin="32dp"
-        app:layout_constraintTop_toTopOf="parent"
+        android:layout_marginEnd="32dp"
+        android:layout_marginTop="32dp"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/appBarLayout"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"/>
+        android:layout_height="wrap_content"
+        tools:ignore="NotSibling" />
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/show_mask_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/white"
@@ -51,24 +68,61 @@
         app:layout_constraintBottom_toBottomOf="parent">
 
         <ToggleButton
-            android:id="@+id/isGpu"
+            android:id="@+id/show_mask"
             android:background="@color/orange"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="@color/white"
-            android:textOff="@string/gpu"
-            android:textOn="@string/gpu"
+            android:textOff="@string/show_mask"
+            android:textOn="@string/hide_mask"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintVertical_bias="0.5" />
+            app:layout_constraintVertical_bias="0.5"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+        />
 
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!--    <ImageView-->
-    <!--        android:id="@+id/ivTop"-->
-    <!--        android:layout_width="match_parent"-->
-    <!--        android:layout_height="match_parent"/>-->
+    <TextView
+        android:id="@+id/label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:textColor="@color/white"
+        android:textSize="24sp"
+        android:gravity="center"
+        android:background="@color/black"
+        app:layout_constraintBottom_toTopOf="@id/show_mask_layout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:ignore="NotSibling" />
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="@android:style/Widget.DeviceDefault.Light.ProgressBar.Large"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/loadingText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/loading_model"
+        android:textColor="@android:color/white"
+        android:textSize="26sp"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/progressBar"
+        app:layout_constraintStart_toStartOf="@id/progressBar"
+        app:layout_constraintEnd_toEndOf="@id/progressBar"
+        android:visibility="gone"/>
 </androidx.constraintlayout.widget.ConstraintLayout>

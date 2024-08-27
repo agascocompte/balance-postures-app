@@ -3,6 +3,11 @@ package es.uji.tfm
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
+import org.opencv.android.Utils
+import org.opencv.core.Core
+import org.opencv.core.CvType
+import org.opencv.core.Mat
+import org.opencv.core.Scalar
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.CompatibilityList
@@ -18,9 +23,10 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 
+
 class Detector(
     private val context: Context,
-    private val modelPath: String,
+    private var modelPath: String,
     private val labelPath: String,
     private val detectorListener: DetectorListener,
 ) {
@@ -32,6 +38,11 @@ class Detector(
     private var tensorHeight = 0
     private var numChannel = 0
     private var numElements = 0
+    private var maskWidth = 0
+    private var maskHeight = 0
+    private var maskChannels = 0
+
+    //private var noDetectionCounter = 0
 
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
@@ -66,19 +77,18 @@ class Detector(
         interpreter = Interpreter(model, options)
 
         val inputShape = interpreter?.getInputTensor(0)?.shape() ?: return
-        val outputShape = interpreter?.getOutputTensor(0)?.shape() ?: return
+        val outputShape0 = interpreter?.getOutputTensor(0)?.shape() ?: return
+        val outputShape1 = interpreter?.getOutputTensor(1)?.shape() ?: return
 
         tensorWidth = inputShape[1]
         tensorHeight = inputShape[2]
 
-        // If in case input shape is in format of [1, 3, ..., ...]
-        if (inputShape[1] == 3) {
-            tensorWidth = inputShape[2]
-            tensorHeight = inputShape[3]
-        }
+        numChannel = outputShape0[1]
+        numElements = outputShape0[2]
 
-        numChannel = outputShape[1]
-        numElements = outputShape[2]
+        maskWidth = outputShape1[1]
+        maskHeight = outputShape1[2]
+        maskChannels = outputShape1[3]
 
         try {
             val inputStream: InputStream = context.assets.open(labelPath)
@@ -118,70 +128,138 @@ class Detector(
         val processedImage = imageProcessor.process(tensorImage)
         val imageBuffer = processedImage.buffer
 
-        val output = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
-        interpreter?.run(imageBuffer, output.buffer)
+        val coordinatesBuffer = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
+        val maskProtoBuffer = TensorBuffer.createFixedSize(intArrayOf(1, maskWidth, maskHeight, maskChannels), OUTPUT_IMAGE_TYPE)
 
-        val bestBoxes = bestBox(output.floatArray)
-        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
+        val outputs = mapOf<Int, Any>(
+            0 to coordinatesBuffer.buffer.rewind(),
+            1 to maskProtoBuffer.buffer.rewind()
+        )
+        interpreter?.runForMultipleInputsOutputs(arrayOf(imageBuffer), outputs)
 
-        if (bestBoxes == null) {
+        val coordinates : FloatArray = coordinatesBuffer.floatArray
+        val masks : FloatArray = maskProtoBuffer.floatArray
+
+        val bestBoxes : List<BoundingBox> = findBestBoxes(coordinates)
+        if (bestBoxes.isEmpty()) {
             detectorListener.onEmptyDetect()
             return
         }
+        val bestBox : BoundingBox = applyNMS(bestBoxes).sortedByDescending { it.cnf }[0]
+        if (bestBox.cls >= 4) {
+            //noDetectionCounter++
+            //if (noDetectionCounter > 15)
+                //detectorListener.onEmptyDetect()
+            return
+        } // Remove background
 
-        detectorListener.onDetect(bestBoxes, inferenceTime)
+        val reshapedMaskOutput : List<Mat> = reshapeOutput1(masks)
+        val mask = Mat()
+        Core.compare(reshapedMaskOutput[0], Scalar(0.5), mask, Core.CMP_GT)
+        val maskBitmap : Bitmap = mask.toTransparentGreenBitmap()
+
+        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
+        //noDetectionCounter = 0
+        detectorListener.onDetect(bestBox, inferenceTime, maskBitmap)
     }
 
-    private fun bestBox(array: FloatArray) : List<BoundingBox>? {
+    private fun Mat.toTransparentGreenBitmap(): Bitmap {
+        val colorMat = Mat(this.size(), CvType.CV_8UC4)
 
-        val boundingBoxes = mutableListOf<BoundingBox>()
+        val greenMat = Mat(this.size(), CvType.CV_8UC1, Scalar(0.0))
+        val alphaMat = Mat(this.size(), CvType.CV_8UC1, Scalar(255.0))
+
+        Core.compare(this, Scalar(255.0), alphaMat, Core.CMP_EQ)
+        Core.bitwise_not(alphaMat, alphaMat)
+        greenMat.setTo(Scalar(255.0), alphaMat)
+
+        val rgbaChannels = mutableListOf<Mat>()
+        rgbaChannels.add(Mat.zeros(this.size(), CvType.CV_8UC1))
+        rgbaChannels.add(greenMat)
+        rgbaChannels.add(Mat.zeros(this.size(), CvType.CV_8UC1))
+        rgbaChannels.add(alphaMat)
+
+        Core.merge(rgbaChannels, colorMat)
+
+        val bitmap = Bitmap.createBitmap(colorMat.cols(), colorMat.rows(), Bitmap.Config.ARGB_8888)
+        Utils.matToBitmap(colorMat, bitmap)
+
+        greenMat.release()
+        alphaMat.release()
+        for (channel in rgbaChannels) {
+            channel.release()
+        }
+        colorMat.release()
+
+        return bitmap
+    }
+
+    private fun reshapeOutput1(masks: FloatArray): List<Mat> {
+        val all = mutableListOf<Mat>()
+
+        for (maskIndex in 0 until maskChannels) {
+            val mat = Mat(maskWidth, maskHeight, CvType.CV_32F)
+            val buffer = FloatArray(maskWidth * maskHeight)
+
+            for (i in 0 until maskWidth) {
+                for (j in 0 until maskHeight) {
+                    buffer[j * maskWidth + i] =  masks[maskChannels * maskHeight * j + maskChannels * i + maskIndex]
+                }
+            }
+
+            mat.put(0, 0, buffer)
+            all.add(mat)
+        }
+        return all
+    }
+
+    private fun findBestBoxes(coordinates: FloatArray) : List<BoundingBox> {
+        val bestBoxes = mutableListOf<BoundingBox>()
 
         for (c in 0 until numElements) {
-            var maxConf = CONFIDENCE_THRESHOLD
-            var maxIdx = -1
-            var j = 4
-            var arrayIdx = c + numElements * j
-            while (j < numChannel){
-                if (array[arrayIdx] > maxConf) {
-                    maxConf = array[arrayIdx]
-                    maxIdx = j - 4
+            val cnf = coordinates[c + numElements * 4]
+
+            val confidences: MutableList<Float> = ArrayList()
+            val start: Int = 4 + labels.size
+            for (i in 4 until start) {
+                confidences.add(coordinates[c + numElements * i])
+            }
+            var maxConfidence = -Float.MAX_VALUE
+            var classId = -1
+            for (i in confidences.indices) {
+                if (confidences[i] > maxConfidence) {
+                    maxConfidence = confidences[i]
+                    classId = i
                 }
-                j++
-                arrayIdx += numElements
             }
 
-            if (maxConf > CONFIDENCE_THRESHOLD) {
-                val clsName = labels[maxIdx]
-                val cx = array[c] // 0
-                val cy = array[c + numElements] // 1
-                val w = array[c + numElements * 2]
-                val h = array[c + numElements * 3]
-                val x1 = cx - (w/2F)
-                val y1 = cy - (h/2F)
-                val x2 = cx + (w/2F)
-                val y2 = cy + (h/2F)
-                if (x1 < 0F || x1 > 1F) continue
-                if (y1 < 0F || y1 > 1F) continue
-                if (x2 < 0F || x2 > 1F) continue
-                if (y2 < 0F || y2 > 1F) continue
+            if (maxConfidence > CONFIDENCE_THRESHOLD) {
+                val cx = coordinates[c]
+                val cy = coordinates[c + numElements]
+                val w = coordinates[c + numElements * 2]
+                val h = coordinates[c + numElements * 3]
 
-                boundingBoxes.add(
-                    BoundingBox(
-                        x1 = x1, y1 = y1, x2 = x2, y2 = y2,
-                        cx = cx, cy = cy, w = w, h = h,
-                        cnf = maxConf, cls = maxIdx, clsName = clsName
-                    )
-                )
+                val x1 = cx - (w / 2F)
+                val y1 = cy - (h / 2F)
+                val x2 = cx + (w / 2F)
+                val y2 = cy + (h / 2F)
+                if (x1 < 0F || x1 > tensorWidth) continue
+                if (y1 < 0F || y1 > tensorHeight) continue
+                if (x2 < 0F || x2 > tensorWidth) continue
+                if (y2 < 0F || y2 > tensorHeight) continue
+
+                val maskWeight = mutableListOf<Float>()
+                for (index in 0 until 32) {
+                    maskWeight.add(coordinates[c + numElements * (index + 5)])
+                }
+                bestBoxes.add(BoundingBox(x1 = cx - w / 2, y1 = cy - h / 2, x2 = cx + w / 2, y2 = cy + h / 2, cx = cx, cy = cy, w = w, h = h, cnf = cnf, cls = classId, clsName = labels[classId], maskWeight = maskWeight))
             }
         }
-
-        if (boundingBoxes.isEmpty()) return null
-
-        return applyNMS(boundingBoxes)
+        return bestBoxes
     }
 
-    private fun applyNMS(boxes: List<BoundingBox>) : MutableList<BoundingBox> {
-        val sortedBoxes = boxes.sortedByDescending { it.cnf }.toMutableList()
+    private fun applyNMS(bestOutput0: List<BoundingBox>): List<BoundingBox> {
+        val sortedBoxes = bestOutput0.sortedByDescending { it.cnf }.toMutableList()
         val selectedBoxes = mutableListOf<BoundingBox>()
 
         while(sortedBoxes.isNotEmpty()) {
@@ -201,21 +279,21 @@ class Detector(
 
         return selectedBoxes
     }
+    private fun calculateIoU(b1: BoundingBox, b2: BoundingBox): Float {
+        val x1 = maxOf(b1.cx - (b1.w/2F), b2.cx - (b2.w/2F))
+        val y1 = maxOf(b1.cy - (b1.h/2F), b2.cy - (b2.h/2F))
+        val x2 = minOf(b1.cx + (b1.w/2F), b2.cx + (b2.w/2F))
+        val y2 = minOf(b1.cy + (b1.h/2F), b2.cy + (b2.h/2F))
 
-    private fun calculateIoU(box1: BoundingBox, box2: BoundingBox): Float {
-        val x1 = maxOf(box1.x1, box2.x1)
-        val y1 = maxOf(box1.y1, box2.y1)
-        val x2 = minOf(box1.x2, box2.x2)
-        val y2 = minOf(box1.y2, box2.y2)
         val intersectionArea = maxOf(0F, x2 - x1) * maxOf(0F, y2 - y1)
-        val box1Area = box1.w * box1.h
-        val box2Area = box2.w * box2.h
+        val box1Area = b1.w * b1.h
+        val box2Area = b2.w * b2.h
         return intersectionArea / (box1Area + box2Area - intersectionArea)
     }
 
     interface DetectorListener {
         fun onEmptyDetect()
-        fun onDetect(boundingBoxes: List<BoundingBox>, inferenceTime: Long)
+        fun onDetect(bestBox: BoundingBox, inferenceTime: Long, mask: Bitmap)
     }
 
     companion object {
