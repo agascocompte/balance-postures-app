@@ -10,9 +10,14 @@
 
     <string-array name="model_options">
         <item>YOLOv8n-seg</item>
+        <item>YOLOv11n-seg</item>
         <item>YOLOv8s-seg</item>
+        <item>YOLOv11s-seg</item>
         <item>YOLOv8m-seg</item>
+        <item>YOLOv11m-seg</item>
         <item>YOLOv8l-seg</item>
+        <item>YOLOv11l-seg</item>
         <item>YOLOv8x-seg</item>
+        <item>YOLOv11x-seg</item>
     </string-array>
 </resources>

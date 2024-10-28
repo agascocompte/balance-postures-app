@@ -27,6 +27,11 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import es.uji.tfm.Constants.LABELS_PATH
+import es.uji.tfm.Constants.MODEL_11L_PATH
+import es.uji.tfm.Constants.MODEL_11M_PATH
+import es.uji.tfm.Constants.MODEL_11N_PATH
+import es.uji.tfm.Constants.MODEL_11S_PATH
+import es.uji.tfm.Constants.MODEL_11X_PATH
 import es.uji.tfm.Constants.MODEL_8L_PATH
 import es.uji.tfm.Constants.MODEL_8M_PATH
 import es.uji.tfm.Constants.MODEL_8N_PATH
@@ -251,11 +256,16 @@ class MainActivity : AppCompatActivity(), Detector.DetectorListener {
     private fun getModelPath(modelName: String): String {
         return when (modelName) {
                 "YOLOv8n-seg" -> MODEL_8N_PATH
+                "YOLOv11n-seg" -> MODEL_11N_PATH
                 "YOLOv8s-seg" -> MODEL_8S_PATH
+                "YOLOv11s-seg" -> MODEL_11S_PATH
                 "YOLOv8m-seg" -> MODEL_8M_PATH
+                "YOLOv11m-seg" -> MODEL_11M_PATH
                 "YOLOv8l-seg" -> MODEL_8L_PATH
+                "YOLOv11l-seg" -> MODEL_11L_PATH
                 "YOLOv8x-seg" -> MODEL_8X_PATH
-            else -> MODEL_8N_PATH
+                "YOLOv11x-seg" -> MODEL_11X_PATH
+            else -> MODEL_11N_PATH
         }
     }
 
