@@ -1,4 +1,4 @@
-# tfm_android (Balance Test Application)
+# Balance Postures Classification Application
 
 This is an Android application developed in Kotlin designed to test and evaluate balance posture classification models based on YOLO8. The application enables real-time detection and classification of specific balance postures, such as feet-together, semi-tandem, tandem and no-balance, using the camera on a mobile device. This tool is intended for research and development in the field of frailty assessment and can be used to validate the performance of different deep learning models.
 
